@@ -1,0 +1,280 @@
+---
+title: "Homework 6: Text data management"
+author: "Tsega"
+date: "`r Sys.Date()`"
+repo: "https://github.com/tmengistalem/plan372-hw6"
+format: html
+---
+
+# Introduction
+
+Street trees provide a host of benefits to urban environments. They create shade, improve air quality, slow traffic on neighborhood streets, and much more. This document addresses the City of Raleigh's request to update its development standards by identifying the types of trees that maximize shade.
+
+My analysis uses data from the U.S. Department of Agriculture’s Urban Tree Database, focusing on the "Raw Tree Data" (`TS3_Raw_tree_data.csv`), which contains individual records for over 14,000 urban trees.
+
+------------------------------------------------------------------------
+
+# 1: Sample Sizes by State
+
+## Question
+
+Extract state information from the `City` column and summarize the number of tree records for each state.
+
+## Methodology
+
+To analyze the number of tree records by state, I: 1. Use a regular expression to split the `City` column into `City` and `State`. 2. Group the data by `State` and count the number of records for each. 3. Visualize the results with a table and a bar plot.
+
+## Implementation
+
+```{r}
+# Load required libraries
+library(tidyverse)
+```
+
+```{r}
+# Load the dataset
+tree_data <- read_csv("TS3_Raw_Tree_Data.csv")
+```
+
+```{r}
+table(tree_data$City)
+```
+
+```{r}
+# state abbreviation from the 'City' column
+tree_data <- tree_data %>%
+  mutate(
+    State = str_extract(City, "[A-Z]{2}$")
+  )
+
+# results
+table(tree_data$State)
+```
+
+```{r}
+# Summarize the number of records by state
+state_counts <- tree_data %>%
+  group_by(State) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
+
+# Bar plot of records by state
+library(ggplot2)
+ggplot(state_counts, aes(x = reorder(State, -Count), y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Number of Tree Records by State",
+    x = "State",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+# 2: Cities in North and South Carolina
+
+## Question
+
+Identify cities in North Carolina (NC) and South Carolina (SC) where tree data were collected.
+
+## Methodology
+
+1.  Filter the dataset to include only records from North Carolina (NC) and South Carolina (SC) based on the `State` column.
+2.  Extract the unique city names for these states.
+3.  Display the list of cities in tabular form.
+
+## Implementation
+
+```{r}
+# Filter the dataset for NC and SC
+nc_sc_data <- tree_data %>%
+  filter(State %in% c("NC", "SC"))
+
+# Extract unique city names from NC and SC
+cities_nc_sc <- nc_sc_data %>%
+  distinct(City) %>%
+  arrange(City)
+
+# Display the list of cities
+cities_nc_sc
+```
+
+North and South Carolina data is not selected, and ready to be used for the following sections.
+
+------------------------------------------------------------------------
+
+# 3: Genera and Species
+
+## Question
+
+Determine which genus of trees has the largest average canopy diameter (`AvgCdia`) in North and South Carolina (NC and SC).
+
+## Methodology
+
+1.  **Extract the Genus**: Use a regular expression to extract the genus from the `ScientificName` column.
+2.  **Filter for Relevant States**: Ensure the dataset is filtered to only include trees in NC and SC.
+3.  **Calculate Average Canopy Diameter**:
+    -   Group the data by genus.
+    -   Compute the average canopy diameter (`AvgCdia`) for each genus.
+4.  **Identify the Genus with the Largest Crown Diameter**:
+    -   Sort the genera by average canopy diameter in descending order.
+    -   Select the genus with the largest average canopy diameter.
+
+## Implementation
+
+```{r}
+# I Ensure the dataset is filtered for NC and SC
+# I'm using the filtered dataset `nc_sc_data` from Question 2
+
+# Extract genus from the ScientificName column
+nc_sc_data <- nc_sc_data %>%
+  mutate(Genus = str_extract(ScientificName, "^[A-Za-z]+")) 
+
+# Calculate the average canopy diameter for each genus
+genus_avg_canopy <- nc_sc_data %>%
+  group_by(Genus) %>%
+  summarise(AvgCdia = mean(`AvgCdia (m)`, na.rm = TRUE)) %>%
+  arrange(desc(AvgCdia))
+
+# I identify the genus with the largest average canopy diameter
+largest_genus <- genus_avg_canopy[1, ]
+
+# Display the table of average canopy diameters
+knitr::kable(genus_avg_canopy, 
+             caption = "Average Canopy Diameter by Genus in NC and SC")
+
+# Display the genus with the largest average canopy diameter
+largest_genus
+```
+
+## Discussion
+
+The genus `Quercus` (oak trees) has the largest average canopy diameter in North and South Carolina, with an average crown size of 13.62 meters. This means oak trees provide the most shade compared to other tree types in the dataset. The result shows that `Quercus` is a good choice for planting if the goal is to maximize shade in urban areas.
+
+## Oak trees are known for their large and spreading crowns, making them ideal for providing shade and improving urban environments. Based on this result, the city can consider focusing on oak trees for their shading needs.
+
+# EC 1: Tree Age and Canopy Growth
+
+## Objective
+
+I analyze how tree age impacts canopy diameter and recommend a genus that produces large crowns quickly.
+
+## Methodology
+
+1.  **Group and Summarize**:
+    -   Group the dataset by `Genus`.
+    -   Calculate the average age and average canopy diameter for each genus.
+2.  **Scatter Plot**:
+    -   Visualize the relationship between average age and canopy diameter using a scatter plot.
+    -   Fit a linear regression line to see the general trend.
+3.  **Identify Fast-Growing Genera**:
+    -   Calculate the growth rate as `AvgCdia / AvgAge`.
+    -   Highlight the genera with high growth rates (large crowns relative to age).
+4.  **Recommendation**:
+    -   Use the results to recommend a genus that produces large crowns quickly.
+
+## Implementation
+
+```{r}
+# Group by genus and calculate averages
+genus_age_canopy <- nc_sc_data %>%
+  group_by(Genus) %>%
+  summarise(
+    AvgAge = mean(Age, na.rm = TRUE),
+    AvgCdia = mean(`AvgCdia (m)`, na.rm = TRUE)
+  ) %>%
+  filter(AvgAge > 0) %>%  # Remove genera with missing or zero age
+  mutate(GrowthRate = AvgCdia / AvgAge) %>%  # Calculate growth rate
+  arrange(desc(GrowthRate))  # Sort by growth rate
+
+# Display the table of genus growth rates
+genus_age_canopy
+```
+
+```{r}
+# Scatter plot: Age vs. Canopy Diameter
+library(ggplot2)
+ggplot(genus_age_canopy, aes(x = AvgAge, y = AvgCdia)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(
+    title = "Relationship Between Tree Age and Canopy Diameter",
+    x = "Average Age (years)",
+    y = "Average Canopy Diameter (meters)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Identify the genus with the highest growth rate
+recommended_genus <- genus_age_canopy[1, ]
+recommended_genus
+```
+
+## Discussion
+
+The scatter plot shows that older trees generally have larger crowns, as seen with a positive trend in the relationship between tree age and canopy diameter. Among the genera, `Ulmus` (elm trees) has the highest growth rate, producing large crowns quickly with an average growth rate of 0.58 meters per year. This makes `Ulmus` a great choice for planting in urban areas when fast shading is needed. Its combination of a relatively young average age and a large canopy diameter highlights its efficiency for rapid crown development.
+
+------------------------------------------------------------------------
+
+# EC 2: Species
+
+## Objective:
+
+Refine regular expressions to extract the species from the `ScientificName` column and count the number of species per genus in NC and SC.
+
+## Methodology
+
+1.  **Refine Regular Expressions**:
+    -   Extract the species from `ScientificName` while handling:
+        -   **Hybrids**: Remove the `x` (e.g., `Platanus x acerifolia` → `acerifolia`).
+        -   **Cultivars**: Remove additional information in single quotes (e.g., `Carpinus betulus 'Fastigiata'` → `betulus`).
+        -   **Varieties**: Remove variety information (e.g., `Juniperus virginiana var. silicicola` → `virginiana`).
+2.  **Add a New Column**:
+    -   Extract the species and store it in a new column called `Species`.
+3.  **Count Distinct Species**:
+    -   Group by `Genus` and count the number of unique species.
+
+## Implementation
+
+```{r}
+# Refine regular expression to extract species
+nc_sc_data <- nc_sc_data %>%
+  mutate(
+    Species = ScientificName %>%
+      str_replace(" x ", " ") %>%                 
+      str_remove("\\s+['\"].*") %>%     
+      str_remove("\\s+var\\.\\s.*") %>%   
+      word(2)                                   
+  )
+
+# Count distinct species per genus
+species_per_genus <- nc_sc_data %>%
+  group_by(Genus) %>%
+  summarise(SpeciesCount = n_distinct(Species)) %>%
+  arrange(desc(SpeciesCount))
+
+# Display the table of species counts
+species_per_genus
+```
+
+## Discussion
+
+There are 20 different types of species in the dataset.
+
+The table shows how many species each genus has in North and South Carolina. The genus `Quercus` (oak trees) has the highest diversity with 6 species. Genera like `Acer` and `Lagerstroemia` follow with 3 and 2 species respectively. Most other genera have only 1 species in the dataset.
+
+The regular expressions worked well, handling hybrids, cultivars, and varieties. For example, `x` was removed, and extra text like `'Fastigiata'` or `var.` was ignored. These results help understand species diversity within each genus and guide tree selection for urban planting.
+
+------------------------------------------------------------------------
+
+
+### Recommendations
+
+-   **Shade Optimization**: Prioritize planting `Quercus` for its extensive canopy and species diversity, ensuring significant shading benefits.
+-   **Rapid Growth**: Utilize `Ulmus` for areas requiring quick canopy coverage due to its high growth rate.
+-   **Biodiversity**: Maintain a diverse tree population by incorporating species from genera with high diversity, such as `Acer` and `Lagerstroemia`.
+
+These findings support strategic tree planting to enhance urban environments in Raleigh and beyond.
